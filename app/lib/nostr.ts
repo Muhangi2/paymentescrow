@@ -1,6 +1,8 @@
-import { relayInit, generatePrivateKey, getPublicKey, finishEvent, nip04, Event } from 'nostr-tools';
+import { relayInit, generatePrivateKey, getPublicKey, finishEvent, nip04,nip19, Event } from 'nostr-tools';
 
-// Singleton relay instance (wss://relay.damus.io is reliable and public)
+
+
+// Singleton relay instance
 const relay = relayInit('wss://relay.damus.io');
 
 // Key pairs (generated once; in a real app, persist these securely)
@@ -8,6 +10,9 @@ const senderPrivateKey = generatePrivateKey();
 const senderPublicKey = getPublicKey(senderPrivateKey);
 const receiverPrivateKey = generatePrivateKey();
 const receiverPublicKey = getPublicKey(receiverPrivateKey);
+
+console.log('P2PK Private Keyyyyyyyyyyyyyy:', senderPrivateKey);
+console.log('P2PK Public Key:', senderPublicKey);
 
 // Initialize relay connection
 export async function initRelay(): Promise<void> {
@@ -63,13 +68,13 @@ export async function receiveGiftWrappedMessage(): Promise<string> {
         }
       });
       sub.on('eose', () => {
-        console.log('End of stored events');
+        reject(new Error('No message found'));
         sub.unsub();
       });
       setTimeout(() => {
         sub.unsub();
-        reject(new Error('No message received within 5 seconds'));
-      }, 5000);
+        reject(new Error('Timeout: No message received'));
+      }, 10000);
     });
   } catch (error) {
     console.error('Failed to receive message:', error);
@@ -91,8 +96,21 @@ export async function publishP2PKEvent({
   relay.on('connect', () => console.log(`Connected to ${relay.url}`));
   relay.on('error', () => console.error(`Failed to connect to ${relay.url}`));
   await relay.connect();
-
-  const pubkey = getPublicKey(recipientPrivkey);
+  
+  // Add this conversion code to handle nsec format
+  let hexPrivkey = recipientPrivkey;
+  if (recipientPrivkey.startsWith('nsec')) {
+    try {
+      const decoded = nip19.decode(recipientPrivkey);
+      if (decoded.type === 'nsec') {
+        hexPrivkey = decoded.data;
+      }
+    } catch (err) {
+      throw new Error(`Invalid nsec key: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  
+  const pubkey = getPublicKey(hexPrivkey);
   const event = {
     kind: 10019,
     created_at: Math.floor(Date.now() / 1000),
@@ -100,8 +118,9 @@ export async function publishP2PKEvent({
     content: '',
     pubkey
   };
-  const signed = finishEvent(event, recipientPrivkey);
-
+  
+  const signed = finishEvent(event, hexPrivkey);
+  
   try {
     await relay.publish(signed);
     relay.close();
