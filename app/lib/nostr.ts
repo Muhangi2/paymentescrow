@@ -12,11 +12,11 @@ const receiverPublicKey = getPublicKey(receiverPrivateKey);
 // Initialize relay connection
 export async function initRelay(): Promise<void> {
   try {
-    if (relay.status === 0 || relay.status === 3) { // 0 = disconnected, 3 = error
+    if (relay.status === 0 || relay.status === 3) {
+      relay.on('connect', () => console.log(`Connected to ${relay.url}`));
+      relay.on('error', () => console.error(`Failed to connect to ${relay.url}`));
       await relay.connect();
     }
-    relay.on('connect', () => console.log(`Connected to ${relay.url}`));
-    relay.on('error', () => console.error(`Failed to connect to ${relay.url}`));
   } catch (error) {
     console.error('Relay initialization failed:', error);
     throw new Error('Could not connect to relay');
@@ -26,10 +26,10 @@ export async function initRelay(): Promise<void> {
 // Send a gift-wrapped message (NIP-17)
 export async function sendGiftWrappedMessage(content: string): Promise<string> {
   try {
-    await initRelay(); // Ensure relay is connected
+    await initRelay();
     const encrypted = await nip04.encrypt(senderPrivateKey, receiverPublicKey, content);
     const event = finishEvent({
-      kind: 1059, // NIP-17 gift wrap
+      kind: 1059,
       content: encrypted,
       tags: [['p', receiverPublicKey]],
       created_at: Math.floor(Date.now() / 1000),
@@ -47,7 +47,7 @@ export async function sendGiftWrappedMessage(content: string): Promise<string> {
 // Receive and decrypt a gift-wrapped message
 export async function receiveGiftWrappedMessage(): Promise<string> {
   try {
-    await initRelay(); // Ensure relay is connected
+    await initRelay();
     return new Promise((resolve, reject) => {
       const sub = relay.sub([{ kinds: [1059], authors: [senderPublicKey] }]);
       sub.on('event', async (event: Event) => {
@@ -56,7 +56,7 @@ export async function receiveGiftWrappedMessage(): Promise<string> {
             const decrypted = await nip04.decrypt(receiverPrivateKey, senderPublicKey, event.content);
             console.log('Message received and decrypted:', decrypted);
             resolve(decrypted);
-            sub.unsub(); // Stop subscription after first match
+            sub.unsub();
           } catch (decryptionError) {
             reject(new Error(`Decryption failed: ${decryptionError}`));
           }
@@ -69,7 +69,7 @@ export async function receiveGiftWrappedMessage(): Promise<string> {
       setTimeout(() => {
         sub.unsub();
         reject(new Error('No message received within 5 seconds'));
-      }, 5000); // Timeout to prevent hanging
+      }, 5000);
     });
   } catch (error) {
     console.error('Failed to receive message:', error);
@@ -77,5 +77,39 @@ export async function receiveGiftWrappedMessage(): Promise<string> {
   }
 }
 
-// Export keys for debugging or UI display (optional)
+// Publish a kind:10019 event with a P2PK pubkey
+export async function publishP2PKEvent({
+  recipientPrivkey,
+  p2pkPubkey,
+  relayUrl = 'wss://relay.damus.io'
+}: {
+  recipientPrivkey: string,
+  p2pkPubkey: string,
+  relayUrl?: string
+}) {
+  const relay = relayInit(relayUrl);
+  relay.on('connect', () => console.log(`Connected to ${relay.url}`));
+  relay.on('error', () => console.error(`Failed to connect to ${relay.url}`));
+  await relay.connect();
+
+  const pubkey = getPublicKey(recipientPrivkey);
+  const event = {
+    kind: 10019,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [['pubkey', p2pkPubkey]],
+    content: '',
+    pubkey
+  };
+  const signed = finishEvent(event, recipientPrivkey);
+
+  try {
+    await relay.publish(signed);
+    relay.close();
+    return 'Event published successfully';
+  } catch (err) {
+    relay.close();
+    throw new Error(`Failed to publish event: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export { senderPublicKey, receiverPublicKey };
