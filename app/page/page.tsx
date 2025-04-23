@@ -28,18 +28,39 @@ const senderPublicKey = getPublicKey(senderPrivateKey);
 const receiverPrivateKey = generatePrivateKey();
 const receiverPublicKey = getPublicKey(receiverPrivateKey);
 
+///aside testing 
+// Function to get wallet info
+async function infohandler() {
+    try {
+      const data = await wallet.getMintInfo();
+      console.log(data, "datatatatataaaaaa");
+      return data;
+    } catch (error) {
+      console.error("Error fetching wallet info:", error);
+      throw error;
+    }
+  }
+  
+
 
 
 const CASHU_MINT_URL = process.env.NEXT_PUBLIC_CASHU_MINT_URL!;
 const mint = new CashuMint(CASHU_MINT_URL);
-const wallet = new CashuWallet(mint, { unit: 'sat' });
+const wallet = new CashuWallet(mint);
+
+// const data=await wallet.getMintInfo();
+// console.log(data,"datatatatataaaaaa")
+
+
 async function createP2PKLock(pubkey: string) {
   const { data } = await axios.post(`${CASHU_MINT_URL}/lock`, { pubkey });
   return data.lock;
 }
 async function mintCashu(amount: number, lock: string) {
+
   const { data } = await axios.post(`${CASHU_MINT_URL}/mint`, { amount, lock });
   return data.token;
+  console.log(data.token)
 }
 async function spendCashu(token: string, sig: string) {
   const { data } = await axios.post(`${CASHU_MINT_URL}/spend`, {
@@ -134,6 +155,23 @@ export default function App() {
     initRelay().catch((err) => toast.error(err.message));
   }, []);
 
+  // State for wallet info
+  const [walletInfo, setWalletInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
+   // Handler for wallet info button
+   const handleWalletInfo = async () => {
+    setLoading(true);
+    try {
+      const info = await infohandler();
+      //@ts-ignore
+      setWalletInfo(info);
+      toast.success('Wallet info fetched successfully');
+    } catch (error) {
+      toast.error('Failed to fetch wallet info');
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <div className="p-6 space-y-6 max-w-2xl mx-auto">
       <Toaster position="top-right" />
@@ -230,6 +268,26 @@ export default function App() {
         {invStatus && <p className="mt-2">Status: {invStatus}</p>}
       </div>
 
+ {/* Wallet Info Section */}
+ <div className="border p-4 rounded">
+        <h2 className="font-semibold">Cashu Wallet Info</h2>
+        <button
+          className="bg-purple-600 text-white px-4 py-2 rounded"
+          onClick={handleWalletInfo}
+          disabled={loading}
+        >
+          {loading ? 'Loading...' : 'Get Wallet Info'}
+        </button>
+        
+        {walletInfo && (
+          <div className="mt-4">
+            <h3 className="font-medium">Mint Info:</h3>
+            <pre className="bg-gray-100 p-3 mt-2 rounded overflow-auto">
+              {JSON.stringify(walletInfo, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
       {/* P2PK Cashu Token */}
       <div className="border p-4 rounded">
         <h2 className="font-semibold">P2PK Cashu Token</h2>
