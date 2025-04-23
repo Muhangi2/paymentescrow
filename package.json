@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@cashu/cashu-ts": "^2.4.1",
+    "axios": "^1.8.4",
     "bitcoinjs-lib": "^6.1.7",
     "lightning": "^10.25.0",
     "lightningdevkit": "^0.1.2-0",
